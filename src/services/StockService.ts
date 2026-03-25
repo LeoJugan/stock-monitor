@@ -136,8 +136,7 @@ export async function fetchStockData(symbol: string, interval: ChartInterval = '
 }> {
   const range = INTERVAL_RANGE[interval]
   const url =
-    `/api/yahoo/v8/finance/chart/${encodeURIComponent(symbol)}` +
-    `?interval=${interval}&range=${range}&includePrePost=false&events=`
+    `/api/stock?symbol=${encodeURIComponent(symbol)}&interval=${interval}&range=${range}`
 
   const res = await fetch(url, {
     headers: { Accept: 'application/json' },

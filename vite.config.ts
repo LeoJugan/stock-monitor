@@ -12,12 +12,18 @@ export default defineConfig({
   server: {
     port: 5200,
     proxy: {
-      // Proxy Yahoo Finance API to bypass CORS
-      '/api/yahoo': {
+      '/api/stock': {
         target: 'https://query1.finance.yahoo.com',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/yahoo/, ''),
         secure: true,
+        rewrite: (path) => {
+          const qs = path.split('?')[1] ?? ''
+          const params = new URLSearchParams(qs)
+          const symbol   = encodeURIComponent(params.get('symbol')   ?? '')
+          const interval = params.get('interval') ?? '1d'
+          const range    = params.get('range')    ?? '6mo'
+          return `/v8/finance/chart/${symbol}?interval=${interval}&range=${range}&includePrePost=false&events=`
+        },
       },
     },
   },
