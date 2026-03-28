@@ -176,6 +176,10 @@ function onInput() {
   showDropdown.value = true
 }
 
+function onBlur() {
+  setTimeout(() => { showDropdown.value = false }, 150)
+}
+
 function onKeydown(e: KeyboardEvent) {
   if (!showDropdown.value || !suggestions.value.length) return
   if (e.key === 'ArrowDown') {
@@ -332,7 +336,7 @@ async function submit() {
               @input="onInput"
               @keydown="onKeydown"
               @keyup.enter="onEnter"
-              @blur="setTimeout(() => showDropdown = false, 150)"
+              @blur="onBlur"
               @focus="showDropdown = suggestions.length > 0"
             />
 
