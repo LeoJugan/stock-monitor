@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, watch } from 'vue'
+import { reactive, watch, computed } from 'vue'
 import type { SignalSettings } from '@/types/stock'
 
 const props = defineProps<{ settings: SignalSettings }>()
@@ -16,6 +16,9 @@ function apply() {
   emit('update', { ...local })
   emit('close')
 }
+
+// 衝突偵測：強度條件 + 預警同時開啟時可能矛盾
+const hasConflict = computed(() => local.crossWarnGap > 0 && local.minKDDiff > 0)
 
 // ── 選項定義 ─────────────────────────────────────────────────────────────────
 
@@ -93,7 +96,19 @@ const REFRESH_CLOSED_OPTIONS = [
 
         <!-- 更新頻率 -->
         <div class="space-y-3">
-          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider">更新頻率</div>
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">更新頻率</span>
+            <span class="group relative cursor-default">
+              <svg class="w-3.5 h-3.5 text-slate-600 hover:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              <div class="pointer-events-none absolute left-5 top-0 z-50 w-64 hidden group-hover:block
+                          bg-slate-900 border border-slate-700 rounded-xl shadow-2xl px-3 py-2.5 text-xs text-slate-300 leading-relaxed">
+                交易時段（週一至週五 09:00–13:30）內的資料刷新頻率。<br/>
+                <span class="text-slate-500">收盤後頻率自動切換為較低頻率以節省請求數。</span>
+              </div>
+            </span>
+          </div>
 
           <div>
             <div class="flex items-center gap-2 mb-2">
@@ -143,7 +158,20 @@ const REFRESH_CLOSED_OPTIONS = [
 
         <!-- 位置條件 -->
         <div class="space-y-4">
-          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider">位置條件</div>
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">位置條件</span>
+            <span class="group relative cursor-default">
+              <svg class="w-3.5 h-3.5 text-slate-600 hover:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              <div class="pointer-events-none absolute left-5 top-0 z-50 w-72 hidden group-hover:block
+                          bg-slate-900 border border-slate-700 rounded-xl shadow-2xl px-3 py-2.5 text-xs text-slate-300 leading-relaxed">
+                交叉發生時，K 值必須落在指定範圍內才算有效訊號。<br/><br/>
+                <span class="text-yellow-400">黃金交叉</span>：建議設 K &lt; 30，只在低檔確認反彈，過濾高位假交叉。<br/>
+                <span class="text-emerald-400">死亡交叉</span>：建議設 K &gt; 70，只在高檔確認壓回，過濾低位假交叉。
+              </div>
+            </span>
+          </div>
 
           <!-- 黃金交叉 -->
           <div>
@@ -193,7 +221,20 @@ const REFRESH_CLOSED_OPTIONS = [
 
         <!-- 強度條件 -->
         <div class="space-y-3">
-          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider">強度條件</div>
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">強度條件</span>
+            <span class="group relative cursor-default">
+              <svg class="w-3.5 h-3.5 text-slate-600 hover:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              <div class="pointer-events-none absolute left-5 top-0 z-50 w-72 hidden group-hover:block
+                          bg-slate-900 border border-slate-700 rounded-xl shadow-2xl px-3 py-2.5 text-xs text-slate-300 leading-relaxed">
+                交叉發生後，K 與 D 的差距必須達到此值才觸發訊號。<br/><br/>
+                KD 在中段（40–60）時常出現差距只有 0.x 的「蜻蜓點水」假交叉。設定強度門檻可過濾這類雜訊，只保留方向明確的有效訊號。<br/><br/>
+                <span class="text-amber-400/80">⚠ 與交叉預警同時開啟時可能產生矛盾，建議擇一使用。</span>
+              </div>
+            </span>
+          </div>
           <div>
             <div class="flex items-center gap-2 mb-2">
               <span class="text-sm text-slate-300">交叉後 K 與 D 差距</span>
@@ -219,7 +260,21 @@ const REFRESH_CLOSED_OPTIONS = [
 
         <!-- 交叉預警 -->
         <div class="space-y-3">
-          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider">交叉預警</div>
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">交叉預警</span>
+            <span class="group relative cursor-default">
+              <svg class="w-3.5 h-3.5 text-slate-600 hover:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              <div class="pointer-events-none absolute left-5 top-0 z-50 w-72 hidden group-hover:block
+                          bg-slate-900 border border-slate-700 rounded-xl shadow-2xl px-3 py-2.5 text-xs text-slate-300 leading-relaxed">
+                交叉「發生前」的提前預警。當 K 連續 3 根往 D 靠近，且差距縮小至門檻以內時觸發「⚡ 即將黃金／死亡」。<br/><br/>
+                適合想提前佈局的使用者。門檻建議：<br/>
+                <span class="text-slate-400">日線 ≤ 5、分鐘線 ≤ 3</span><br/><br/>
+                <span class="text-amber-400/80">⚠ 與強度條件同時開啟時，預警可能觸發但實際交叉因強度不足而不發訊號，建議擇一使用。</span>
+              </div>
+            </span>
+          </div>
           <div>
             <div class="flex items-center gap-2 mb-2">
               <span class="text-sm text-slate-300">即將交叉偵測門檻</span>
@@ -258,6 +313,18 @@ const REFRESH_CLOSED_OPTIONS = [
               />
             </button>
           </div>
+        </div>
+
+        <!-- 衝突警告 -->
+        <div v-if="hasConflict"
+             class="flex items-start gap-2 text-xs bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2.5 text-amber-300 leading-relaxed">
+          <svg class="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+          </svg>
+          <span>
+            <span class="font-semibold">強度條件與交叉預警同時開啟</span>，可能出現「即將交叉」預警觸發，但實際交叉因強度不足而不發訊號的情況。建議擇一使用。
+          </span>
         </div>
 
         <!-- 目前條件預覽 -->

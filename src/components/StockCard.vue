@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import type { StockData, WatchlistItem, ChartInterval } from '@/types/stock'
+import type { StockData, WatchlistItem, ChartInterval, SignalSettings } from '@/types/stock'
 import { getSignalLabel, getSignalClasses } from '@/utils/kdCalculator'
-import { formatTime } from '@/utils/marketTime'
 import { PERIOD_OPTIONS } from '@/services/StockService'
+import { useStockStore } from '@/stores/stockStore'
 import KDChart from './KDChart.vue'
 import StockZoomModal from './StockZoomModal.vue'
 
 const props = defineProps<{
   item: WatchlistItem
   data?: StockData
+  settings?: SignalSettings
 }>()
 
 const emit = defineEmits<{
@@ -17,6 +18,18 @@ const emit = defineEmits<{
   toggleNotify: [symbol: string]
   changeInterval: [symbol: string, interval: ChartInterval]
 }>()
+
+const store = useStockStore()
+const inPocket = computed(() => store.isInPocket(props.item.symbol))
+
+function togglePocket() {
+  if (inPocket.value) {
+    store.removeFromPocket(props.item.symbol)
+  } else {
+    const name = props.item.customName || props.data?.quote.name || props.item.symbol
+    store.addToPocket(props.item.symbol, name)
+  }
+}
 
 const expanded = ref(false)
 const zoomed   = ref(false)
@@ -48,9 +61,6 @@ const kColor = computed(() => {
   return 'text-yellow-300'
 })
 
-const lastUpdatedStr = computed(() =>
-  props.data?.lastUpdated ? formatTime(props.data.lastUpdated) : ''
-)
 
 function formatVolume(v: number): string {
   if (v >= 1e8) return `${(v / 1e8).toFixed(1)}億`
@@ -65,13 +75,13 @@ function formatVolume(v: number): string {
            transition-all duration-200 hover:border-slate-600 hover:bg-slate-800/90 shadow-lg"
   >
     <!-- ── 主要資訊區 ── -->
-    <div class="p-4 cursor-pointer select-none" @click="expanded = !expanded">
+    <div class="p-4 cursor-pointer select-none" @click="expanded = !expanded" @dblclick.prevent="zoomed = true">
 
       <!-- 股票代碼 + 名稱 + 刪除 -->
       <div class="flex items-start justify-between gap-2 mb-3">
         <div class="min-w-0 flex items-center gap-2">
-          <span class="shrink-0 font-mono text-[11px] font-bold px-1.5 py-0.5 rounded
-                       bg-slate-700 text-slate-400">
+          <span class="shrink-0 font-mono text-sm font-bold px-2 py-0.5 rounded-md
+                       bg-blue-500/20 text-blue-300 border border-blue-500/30 tracking-wide">
             {{ shortCode }}
           </span>
           <span class="text-sm font-semibold text-slate-100 truncate">{{ displayName }}</span>
@@ -138,7 +148,7 @@ function formatVolume(v: number): string {
             </span>
           </div>
           <div class="ml-auto">
-            <span :class="['text-[11px] font-medium border px-1.5 py-0.5 rounded-md',
+            <span :class="['text-[11px] font-medium border px-1.5 py-0.5 rounded-md whitespace-nowrap',
                           getSignalClasses(data.signal)]">
               {{ getSignalLabel(data.signal) }}
             </span>
@@ -149,47 +159,53 @@ function formatVolume(v: number): string {
       <!-- 尚無資料 -->
       <div v-else class="text-slate-600 text-sm py-3 text-center">尚無資料</div>
 
-      <!-- 週期切換列 -->
-      <div class="flex items-center gap-1 mt-3 pt-2 border-t border-slate-700/30">
+      <!-- 底部工具列：整排平均分佈，點任意空白處展開/收合 -->
+      <div class="flex items-center justify-between mt-3 pt-2 border-t border-slate-700/30 cursor-pointer select-none"
+           @click.stop="expanded = !expanded">
+
+        <!-- 收藏 -->
         <button
-          v-for="p in PERIOD_OPTIONS" :key="p.value"
-          :class="[
-            'text-[11px] px-2 py-0.5 rounded-md transition-all font-medium',
-            item.interval === p.value
-              ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-              : 'text-slate-600 hover:text-slate-300 hover:bg-slate-700/50'
-          ]"
-          @click.stop="emit('changeInterval', item.symbol, p.value)"
-        >{{ p.label }}</button>
+          :title="inPocket ? '從口袋清單移除' : '加入口袋清單'"
+          :class="['p-1.5 rounded-lg transition-colors',
+                   inPocket ? 'text-yellow-400 hover:text-yellow-300' : 'text-slate-600 hover:text-yellow-400']"
+          @click.stop="togglePocket"
+        >
+          <svg class="w-3.5 h-3.5" :fill="inPocket ? 'currentColor' : 'none'" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+          </svg>
+        </button>
 
-        <div class="ml-auto flex items-center gap-2.5">
-          <!-- 放大鏡 -->
-          <button
-            v-if="data?.quote"
-            title="放大檢視"
-            class="text-slate-600 hover:text-slate-300 transition-colors"
-            @click.stop="zoomed = true"
-          >
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
-            </svg>
-          </button>
+        <!-- 放大鏡 -->
+        <button
+          v-if="data?.quote"
+          title="放大檢視"
+          class="p-1.5 rounded-lg text-slate-600 hover:text-slate-300 transition-colors"
+          @click.stop="zoomed = true"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+          </svg>
+        </button>
+        <div v-else class="w-7" />
 
-          <button
-            :title="item.notifyOnSignal ? '關閉此股通知' : '開啟此股通知'"
-            :class="['flex items-center gap-1 text-[11px] transition-colors',
-                     item.notifyOnSignal ? 'text-yellow-400' : 'text-slate-600 hover:text-slate-400']"
-            @click.stop="emit('toggleNotify', item.symbol)"
-          >
-            <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5S10 3.17 10 4v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z" />
-            </svg>
-          </button>
-          <span v-if="lastUpdatedStr" class="text-[10px] text-slate-600">{{ lastUpdatedStr }}</span>
+        <!-- 通知 -->
+        <button
+          :title="item.notifyOnSignal ? '關閉此股通知' : '開啟此股通知'"
+          :class="['p-1.5 rounded-lg transition-colors',
+                   item.notifyOnSignal ? 'text-yellow-400 hover:text-yellow-300' : 'text-slate-600 hover:text-slate-400']"
+          @click.stop="emit('toggleNotify', item.symbol)"
+        >
+          <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5S10 3.17 10 4v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z" />
+          </svg>
+        </button>
+
+        <!-- 展開 / 收合 -->
+        <div class="p-1.5 text-slate-600">
           <svg
-            :class="['w-4 h-4 text-slate-600 transition-transform duration-200',
-                     expanded ? 'rotate-180' : '']"
+            :class="['w-4 h-4 transition-transform duration-200', expanded ? 'rotate-180' : '']"
             fill="none" stroke="currentColor" viewBox="0 0 24 24"
           >
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
@@ -210,7 +226,9 @@ function formatVolume(v: number): string {
           v-if="zoomed && data?.quote"
           :item="item"
           :data="data"
+          :settings="settings"
           @close="zoomed = false"
+          @changeInterval="(sym, iv) => emit('changeInterval', sym, iv)"
         />
       </Transition>
     </Teleport>
@@ -226,14 +244,21 @@ function formatVolume(v: number): string {
     >
       <div v-if="expanded && data?.kd?.length"
         class="border-t border-slate-700/40 px-3 pb-4 pt-3 bg-slate-900/30 overflow-hidden">
-        <div class="text-[11px] text-slate-500 font-medium mb-2 flex items-center gap-2">
-          <span>KD 走勢圖</span>
-          <span class="text-slate-700">近 {{ Math.min(data.kd.length, 60) }} 個交易日</span>
-          <span class="ml-auto text-slate-700">
-            🔴 超買(>80) 　🟡 超賣(<20)
-          </span>
+        <!-- 週期切換 -->
+        <div class="flex items-center gap-1 mb-2.5">
+          <button
+            v-for="p in PERIOD_OPTIONS" :key="p.value"
+            :class="[
+              'text-[11px] px-2 py-0.5 rounded-md transition-all font-medium',
+              item.interval === p.value
+                ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                : 'text-slate-600 hover:text-slate-300 hover:bg-slate-700/50'
+            ]"
+            @click.stop="emit('changeInterval', item.symbol, p.value)"
+          >{{ p.label }}</button>
+          <span class="ml-auto text-[10px] text-slate-700">🔴 超買  🟡 超賣</span>
         </div>
-        <KDChart :kd="data.kd" :days="60" />
+        <KDChart :kd="data.kd" :days="60" :settings="settings" :interval="item.interval" />
 
         <!-- 當日資訊卡 -->
         <div class="grid grid-cols-4 gap-2 mt-3">

@@ -14,6 +14,8 @@ export interface KDValue {
   rsv: number
   k: number
   d: number
+  j?: number   // J = 3K - 2D，由 Fugle KDJ API 提供
+  close: number
 }
 
 /** KD 訊號類型 */
@@ -67,6 +69,12 @@ export interface SignalSettings {
   refreshTradingMs: number
   /** 收盤後更新頻率（毫秒） */
   refreshClosedMs: number
+}
+
+export interface PocketItem {
+  symbol: string
+  name: string
+  addedAt: number
 }
 
 export interface WatchlistItem {

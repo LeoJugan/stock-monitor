@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { StockData, WatchlistItem } from '@/types/stock'
+import type { StockData, WatchlistItem, SignalSettings, ChartInterval } from '@/types/stock'
 import { computed } from 'vue'
 import { getSignalLabel, getSignalClasses } from '@/utils/kdCalculator'
 import { PERIOD_OPTIONS } from '@/services/StockService'
@@ -8,9 +8,13 @@ import KDChart from './KDChart.vue'
 const props = defineProps<{
   item: WatchlistItem
   data: StockData
+  settings?: SignalSettings
 }>()
 
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{
+  close: []
+  changeInterval: [symbol: string, interval: ChartInterval]
+}>()
 
 const shortCode = computed(() =>
   props.item.symbol.replace(/\.TW[O]?$/, '').replace(/^\^/, '')
@@ -102,12 +106,21 @@ function formatVolume(v: number): string {
 
         <!-- KD 圖表（放大版） -->
         <div class="bg-slate-800/40 rounded-xl p-3 border border-slate-700/30">
-          <div class="text-[11px] text-slate-500 font-medium mb-2 flex items-center gap-2">
-            <span>KD 走勢圖</span>
-            <span class="text-slate-700">近 {{ Math.min(data.kd.length, 120) }} 根</span>
-            <span class="ml-auto text-slate-700">🟡 K線　🔵 D線　🔴 金叉　🟢 死叉</span>
+          <!-- 週期切換 -->
+          <div class="flex items-center gap-1 mb-3">
+            <button
+              v-for="p in PERIOD_OPTIONS" :key="p.value"
+              :class="[
+                'text-[11px] px-2.5 py-1 rounded-md transition-all font-medium',
+                item.interval === p.value
+                  ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                  : 'text-slate-600 hover:text-slate-300 hover:bg-slate-700/50'
+              ]"
+              @click="emit('changeInterval', item.symbol, p.value)"
+            >{{ p.label }}</button>
+            <span class="ml-auto text-[10px] text-slate-700">🟡 K　🔵 D　🔴 金叉　🟢 死叉</span>
           </div>
-          <KDChart :kd="data.kd" :days="120" />
+          <KDChart :kd="data.kd" :days="120" :settings="settings" :interval="item.interval" />
         </div>
 
         <!-- OHLCV -->

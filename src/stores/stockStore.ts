@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { WatchlistItem, StockData, KDSignal, ChartInterval, SignalSettings } from '@/types/stock'
-import { fetchStockData, normalizeSymbol } from '@/services/StockService'
+import type { WatchlistItem, StockData, KDSignal, ChartInterval, SignalSettings, PocketItem } from '@/types/stock'
+import { fetchStockData, normalizeSymbol } from '@/services/FugleService'
 import { calculateKD, detectSignal, getSignalLabel, DEFAULT_SIGNAL_SETTINGS } from '@/utils/kdCalculator'
 import { isTaiwanTradingTime } from '@/utils/marketTime'
 
@@ -17,6 +17,7 @@ function emptyQuote(symbol: string) {
 
 export const useStockStore = defineStore('stock', () => {
   const watchlist      = ref<WatchlistItem[]>([])
+  const pocketList     = ref<PocketItem[]>([])
   const dataMap        = ref<Record<string, StockData>>({})
   const notifyEnabled  = ref(false)
   const signalSettings = ref<SignalSettings>({ ...DEFAULT_SIGNAL_SETTINGS })
@@ -29,6 +30,7 @@ export const useStockStore = defineStore('stock', () => {
   function save() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       watchlist: watchlist.value,
+      pocketList: pocketList.value,
       notifyEnabled: notifyEnabled.value,
       signalSettings: signalSettings.value,
     }))
@@ -41,8 +43,9 @@ export const useStockStore = defineStore('stock', () => {
       const parsed = JSON.parse(raw)
       watchlist.value    = (parsed.watchlist ?? []).map((w: WatchlistItem) => ({
         ...w,
-        interval: w.interval ?? '1d',   // 舊資料補預設值
+        interval: w.interval ?? '5m',
       }))
+      pocketList.value     = parsed.pocketList ?? []
       notifyEnabled.value  = parsed.notifyEnabled  ?? false
       signalSettings.value = { ...DEFAULT_SIGNAL_SETTINGS, ...(parsed.signalSettings ?? {}) }
     } catch {
@@ -57,15 +60,32 @@ export const useStockStore = defineStore('stock', () => {
     if (watchlist.value.some(w => w.symbol === symbol)) {
       throw new Error(`${symbol} 已在清單中`)
     }
+
+    // 先驗證資料可以抓到，找不到就不加入
+    const DEFAULT_INTERVAL = '5m' as const
+    const { quote, bars, kd: apiKD } = await fetchStockData(symbol, DEFAULT_INTERVAL)
+    if (!quote || bars.length === 0) throw new Error(`找不到股票：${symbol}`)
+
+    // 驗證通過才加入清單
     watchlist.value.push({
       symbol,
       customName: customName || undefined,
       notifyOnSignal: true,
       addedAt: Date.now(),
-      interval: '1d',
+      interval: DEFAULT_INTERVAL,
     })
     save()
-    await refreshOne(symbol)
+
+    // 直接用剛抓到的資料，不用再發一次請求
+    const kd        = apiKD ?? calculateKD(bars)
+    const newSignal = detectSignal(kd, signalSettings.value)
+    dataMap.value[symbol] = {
+      symbol, quote, bars, kd,
+      signal:      newSignal,
+      prevSignal:  'normal',
+      lastUpdated: new Date(),
+      loading:     false,
+    }
   }
 
   function removeStock(symbol: string) {
@@ -82,6 +102,23 @@ export const useStockStore = defineStore('stock', () => {
   function updateCustomName(symbol: string, name: string) {
     const item = watchlist.value.find(w => w.symbol === symbol)
     if (item) { item.customName = name || undefined; save() }
+  }
+
+  // ── 口袋清單 ─────────────────────────────────────────────────────────────────
+
+  function addToPocket(symbol: string, name: string) {
+    if (pocketList.value.some(p => p.symbol === symbol)) return
+    pocketList.value.push({ symbol, name, addedAt: Date.now() })
+    save()
+  }
+
+  function removeFromPocket(symbol: string) {
+    pocketList.value = pocketList.value.filter(p => p.symbol !== symbol)
+    save()
+  }
+
+  function isInPocket(symbol: string): boolean {
+    return pocketList.value.some(p => p.symbol === symbol)
   }
 
   // ── 訊號設定 ─────────────────────────────────────────────────────────────────
@@ -111,7 +148,7 @@ export const useStockStore = defineStore('stock', () => {
   async function refreshOne(symbol: string) {
     const prev = dataMap.value[symbol]
     const item = watchlist.value.find(w => w.symbol === symbol)
-    const interval = item?.interval ?? '1d'
+    const interval = item?.interval ?? '5m'
 
     // 設置 loading 狀態
     dataMap.value[symbol] = {
@@ -127,8 +164,9 @@ export const useStockStore = defineStore('stock', () => {
     }
 
     try {
-      const { quote, bars } = await fetchStockData(symbol, interval)
-      const kd        = calculateKD(bars)
+      const { quote, bars, kd: apiKD } = await fetchStockData(symbol, interval)
+      // Fugle 直接提供 KDJ，Yahoo Finance 則自行計算
+      const kd = apiKD ?? calculateKD(bars)
       const newSignal  = detectSignal(kd, signalSettings.value)
       const prevSignal = (prev?.signal ?? 'normal') as KDSignal
 
@@ -230,6 +268,7 @@ export const useStockStore = defineStore('stock', () => {
 
   return {
     watchlist,
+    pocketList,
     dataMap,
     notifyEnabled,
     signalSettings,
@@ -239,6 +278,9 @@ export const useStockStore = defineStore('stock', () => {
     listWithData,
     addStock,
     removeStock,
+    addToPocket,
+    removeFromPocket,
+    isInPocket,
     toggleNotify,
     updateCustomName,
     changeInterval,

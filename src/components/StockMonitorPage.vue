@@ -201,6 +201,7 @@ async function manualRefresh() {
           :key="item.symbol"
           :item="item"
           :data="data"
+          :settings="store.signalSettings"
           @remove="store.removeStock"
           @toggleNotify="store.toggleNotify"
           @changeInterval="store.changeInterval"

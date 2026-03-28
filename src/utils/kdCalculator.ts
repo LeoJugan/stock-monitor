@@ -25,7 +25,7 @@ export function calculateKD(bars: OHLCVBar[]): KDValue[] {
 
   for (let i = 0; i < bars.length; i++) {
     if (i < KD_PERIOD - 1) {
-      result.push({ date: bars[i].date, rsv: 50, k: 50, d: 50 })
+      result.push({ date: bars[i].date, rsv: 50, k: 50, d: 50, close: bars[i].close })
       continue
     }
 
@@ -46,9 +46,10 @@ export function calculateKD(bars: OHLCVBar[]): KDValue[] {
 
     result.push({
       date: bars[i].date,
-      rsv: Math.round(rsv * 100) / 100,
-      k: Math.round(k * 100) / 100,
-      d: Math.round(d * 100) / 100,
+      rsv:   Math.round(rsv * 100) / 100,
+      k:     Math.round(k   * 100) / 100,
+      d:     Math.round(d   * 100) / 100,
+      close: bars[i].close,
     })
   }
 
@@ -86,13 +87,15 @@ export function detectSignal(kd: KDValue[], settings: SignalSettings = DEFAULT_S
     const prevGap  = prev.k - prev.d      // 前一根差距
     const prev2Gap = prev2.k - prev2.d    // 前兩根差距
 
-    // 黃金交叉預警：K 在 D 下方，且差距連續 3 根收斂，且差距 ≤ 門檻
+    // 黃金交叉預警：K 在 D 下方，連續 3 根收斂，差距 ≤ 門檻，且符合位置條件
     if (gap < 0 && gap > prevGap && prevGap > prev2Gap && Math.abs(gap) <= settings.crossWarnGap) {
-      return 'golden_cross_warn'
+      const posOk = settings.goldenCrossMaxK === null || cur.k < settings.goldenCrossMaxK
+      if (posOk) return 'golden_cross_warn'
     }
-    // 死亡交叉預警：K 在 D 上方，且差距連續 3 根收斂，且差距 ≤ 門檻
+    // 死亡交叉預警：K 在 D 上方，連續 3 根收斂，差距 ≤ 門檻，且符合位置條件
     if (gap > 0 && gap < prevGap && prevGap < prev2Gap && Math.abs(gap) <= settings.crossWarnGap) {
-      return 'death_cross_warn'
+      const posOk = settings.deathCrossMinK === null || cur.k > settings.deathCrossMinK
+      if (posOk) return 'death_cross_warn'
     }
   }
 
