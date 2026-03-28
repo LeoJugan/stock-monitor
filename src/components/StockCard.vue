@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue'
 import type { StockData, WatchlistItem, ChartInterval, SignalSettings } from '@/types/stock'
 import { getSignalLabel, getSignalClasses } from '@/utils/kdCalculator'
-import { PERIOD_OPTIONS } from '@/services/StockService'
+import { PERIOD_OPTIONS } from '@/services/dataService'
 import { useStockStore } from '@/stores/stockStore'
 import KDChart from './KDChart.vue'
 import StockZoomModal from './StockZoomModal.vue'

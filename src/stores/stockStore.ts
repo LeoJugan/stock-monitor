@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { WatchlistItem, StockData, KDSignal, ChartInterval, SignalSettings, PocketItem } from '@/types/stock'
-import { fetchStockData, normalizeSymbol } from '@/services/FugleService'
+import { fetchStockData, normalizeSymbol } from '@/services/dataService'
 import { calculateKD, detectSignal, getSignalLabel, DEFAULT_SIGNAL_SETTINGS } from '@/utils/kdCalculator'
 import { isTaiwanTradingTime } from '@/utils/marketTime'
 

@@ -2,7 +2,7 @@
 import type { StockData, WatchlistItem, SignalSettings, ChartInterval } from '@/types/stock'
 import { computed } from 'vue'
 import { getSignalLabel, getSignalClasses } from '@/utils/kdCalculator'
-import { PERIOD_OPTIONS } from '@/services/StockService'
+import { PERIOD_OPTIONS } from '@/services/dataService'
 import KDChart from './KDChart.vue'
 
 const props = defineProps<{

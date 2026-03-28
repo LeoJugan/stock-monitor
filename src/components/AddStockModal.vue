@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { TW_STOCK_NAMES } from '@/services/StockService'
+import { TW_STOCK_NAMES } from '@/services/dataService'
 import { useStockStore } from '@/stores/stockStore'
 
 const emit = defineEmits<{

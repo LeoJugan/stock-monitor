@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useStockStore } from '@/stores/stockStore'
 import { getTaiwanTimeStr, isTaiwanTradingTime } from '@/utils/marketTime'
+import { DATA_SOURCE_LABEL } from '@/services/dataService'
 import StockCard from './StockCard.vue'
 import AddStockModal from './AddStockModal.vue'
 import SignalSettingsModal from './SignalSettingsModal.vue'
@@ -230,7 +231,7 @@ async function manualRefresh() {
 
     <!-- ══ Footer ══════════════════════════════════════════════════════ -->
     <footer class="border-t border-slate-800/60 py-3 text-center text-[11px] text-slate-700">
-      資料來源：Yahoo Finance ｜ KD 指標採 9 日 RSV，2/3 平滑計算
+      資料來源：{{ DATA_SOURCE_LABEL }} ｜ KD 指標採 9 日 RSV，2/3 平滑計算
       <span class="mx-2">·</span>
       台灣時間 {{ isTrading ? '09:00–13:30 交易' : '非交易時段' }}
     </footer>

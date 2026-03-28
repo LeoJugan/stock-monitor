@@ -85,7 +85,8 @@ interface YFChartResponse {
 
 export async function fetchStockData(symbol: string, interval: ChartInterval = '1d'): Promise<{
   quote: StockQuote
-  bars: OHLCVBar[]
+  bars:  OHLCVBar[]
+  kd?:   undefined   // Yahoo 不提供 KD，由 store 自行計算
 }> {
   const range = INTERVAL_RANGE[interval]
   const url = `/api/stock?symbol=${encodeURIComponent(symbol)}&interval=${interval}&range=${range}`
