@@ -94,6 +94,15 @@ export const useStockStore = defineStore('stock', () => {
     save()
   }
 
+  function reorderStock(fromIdx: number, toIdx: number) {
+    if (fromIdx === toIdx) return
+    const list = [...watchlist.value]
+    const [item] = list.splice(fromIdx, 1)
+    list.splice(toIdx, 0, item)
+    watchlist.value = list
+    save()
+  }
+
   function toggleNotify(symbol: string) {
     const item = watchlist.value.find(w => w.symbol === symbol)
     if (item) { item.notifyOnSignal = !item.notifyOnSignal; save() }
@@ -278,6 +287,7 @@ export const useStockStore = defineStore('stock', () => {
     listWithData,
     addStock,
     removeStock,
+    reorderStock,
     addToPocket,
     removeFromPocket,
     isInPocket,

@@ -60,6 +60,44 @@ async function manualRefresh() {
   await store.refreshAll()
   setTimeout(() => { spinning.value = false }, 600)
 }
+
+// 拖曳排序
+const dragFrom  = ref(-1)
+const dragOver  = ref(-1)
+const dragReady = ref(false)  // 只有從把手按下才允許拖曳
+
+function onDragHandleMousedown() {
+  dragReady.value = true
+}
+
+function onDragStart(e: DragEvent, idx: number) {
+  if (!dragReady.value) { e.preventDefault(); return }
+  dragFrom.value = idx
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', String(idx))
+  }
+}
+
+function onDragOver(e: DragEvent, idx: number) {
+  e.preventDefault()
+  dragOver.value = idx
+}
+
+function onDrop(idx: number) {
+  if (dragFrom.value !== -1 && dragFrom.value !== idx) {
+    store.reorderStock(dragFrom.value, idx)
+  }
+  dragFrom.value  = -1
+  dragOver.value  = -1
+  dragReady.value = false
+}
+
+function onDragEnd() {
+  dragFrom.value  = -1
+  dragOver.value  = -1
+  dragReady.value = false
+}
 </script>
 
 <template>
@@ -197,16 +235,31 @@ async function manualRefresh() {
       <!-- 股票卡片 Grid -->
       <div v-if="store.listWithData.length > 0"
         class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-        <StockCard
-          v-for="{ item, data } in store.listWithData"
+        <div
+          v-for="({ item, data }, idx) in store.listWithData"
           :key="item.symbol"
-          :item="item"
-          :data="data"
-          :settings="store.signalSettings"
-          @remove="store.removeStock"
-          @toggleNotify="store.toggleNotify"
-          @changeInterval="store.changeInterval"
-        />
+          :draggable="dragReady"
+          :class="[
+            'rounded-2xl transition-all duration-150',
+            dragFrom === idx ? 'opacity-40 scale-95' : '',
+            dragOver === idx && dragFrom !== idx
+              ? 'ring-2 ring-blue-500/60 ring-offset-2 ring-offset-slate-950' : '',
+          ]"
+          @dragstart="onDragStart($event, idx)"
+          @dragover="onDragOver($event, idx)"
+          @drop.prevent="onDrop(idx)"
+          @dragend="onDragEnd"
+        >
+          <StockCard
+            :item="item"
+            :data="data"
+            :settings="store.signalSettings"
+            @remove="store.removeStock"
+            @toggleNotify="store.toggleNotify"
+            @changeInterval="store.changeInterval"
+            @dragHandleMousedown="onDragHandleMousedown"
+          />
+        </div>
       </div>
 
       <!-- 空狀態 -->

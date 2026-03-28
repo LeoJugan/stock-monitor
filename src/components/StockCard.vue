@@ -17,6 +17,7 @@ const emit = defineEmits<{
   remove: [symbol: string]
   toggleNotify: [symbol: string]
   changeInterval: [symbol: string, interval: ChartInterval]
+  dragHandleMousedown: []
 }>()
 
 const store = useStockStore()
@@ -80,6 +81,23 @@ function formatVolume(v: number): string {
       <!-- 股票代碼 + 名稱 + 刪除 -->
       <div class="flex items-start justify-between gap-2 mb-3">
         <div class="min-w-0 flex items-center gap-2">
+          <!-- 拖曳把手 -->
+          <div
+            class="shrink-0 text-slate-700 hover:text-slate-400 cursor-grab active:cursor-grabbing
+                   p-0.5 -ml-1 touch-none transition-colors"
+            title="拖曳排序"
+            @click.stop
+            @mousedown.stop="emit('dragHandleMousedown')"
+          >
+            <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+              <circle cx="9"  cy="5"  r="1.5"/>
+              <circle cx="15" cy="5"  r="1.5"/>
+              <circle cx="9"  cy="12" r="1.5"/>
+              <circle cx="15" cy="12" r="1.5"/>
+              <circle cx="9"  cy="19" r="1.5"/>
+              <circle cx="15" cy="19" r="1.5"/>
+            </svg>
+          </div>
           <span class="shrink-0 font-mono text-sm font-bold px-2 py-0.5 rounded-md
                        bg-blue-500/20 text-blue-300 border border-blue-500/30 tracking-wide">
             {{ shortCode }}
