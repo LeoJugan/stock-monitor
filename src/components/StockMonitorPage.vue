@@ -6,10 +6,12 @@ import { DATA_SOURCE_LABEL } from '@/services/dataService'
 import StockCard from './StockCard.vue'
 import AddStockModal from './AddStockModal.vue'
 import SignalSettingsModal from './SignalSettingsModal.vue'
+import ThreeMajors from './ThreeMajors.vue'
 
 const store = useStockStore()
 const showModal    = ref(false)
 const showSettings = ref(false)
+const activeTab    = ref<'watchlist' | 'three-majors'>('watchlist')
 const addError   = ref('')
 const twTime     = ref(getTaiwanTimeStr())
 const isTrading  = ref(isTaiwanTradingTime())
@@ -178,8 +180,9 @@ function onDragEnd() {
           </svg>
         </button>
 
-        <!-- 新增按鈕 -->
+        <!-- 新增按鈕（只在盯盤頁顯示） -->
         <button
+          v-if="activeTab === 'watchlist'"
           class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500
                  text-white text-xs font-semibold transition-colors shadow-lg shadow-blue-500/20"
           @click="showModal = true; addError = ''"
@@ -190,10 +193,34 @@ function onDragEnd() {
           新增股票
         </button>
       </div>
+
+      <!-- Tab 列 -->
+      <div class="max-w-6xl mx-auto px-4 flex gap-1 pb-0 border-b border-slate-800">
+        <button
+          :class="['px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px',
+                   activeTab === 'watchlist'
+                     ? 'border-blue-500 text-blue-400'
+                     : 'border-transparent text-slate-500 hover:text-slate-300']"
+          @click="activeTab = 'watchlist'"
+        >📊 自選清單</button>
+        <button
+          :class="['px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px',
+                   activeTab === 'three-majors'
+                     ? 'border-blue-500 text-blue-400'
+                     : 'border-transparent text-slate-500 hover:text-slate-300']"
+          @click="activeTab = 'three-majors'"
+        >🏦 三大法人</button>
+      </div>
     </header>
 
     <!-- ══ Body ══════════════════════════════════════════════════════ -->
-    <main class="flex-1 max-w-6xl mx-auto w-full px-4 py-5">
+    <main class="flex-1 w-full py-5">
+
+      <!-- 三大法人 Tab -->
+      <ThreeMajors v-if="activeTab === 'three-majors'" />
+
+      <!-- 盯盤 Tab -->
+      <div v-else class="max-w-6xl mx-auto px-4">
 
       <!-- 訊號摘要列 -->
       <div v-if="hasAlert"
@@ -280,6 +307,7 @@ function onDragEnd() {
           新增第一支股票
         </button>
       </div>
+      </div><!-- end watchlist tab -->
     </main>
 
     <!-- ══ Footer ══════════════════════════════════════════════════════ -->

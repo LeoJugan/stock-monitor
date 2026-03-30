@@ -25,6 +25,20 @@ export default defineConfig(({ mode }) => {
           headers: { 'X-API-KEY': fugleKey },
         },
 
+        // ── 台灣證交所三大法人 ───────────────────────────────────────────
+        '/api/three-majors': {
+          target: 'https://www.twse.com.tw',
+          changeOrigin: true,
+          secure: true,
+          rewrite: (p) => {
+            const q = p.split('?')[1] ?? ''
+            const params = new URLSearchParams(q)
+            const date = params.get('date') || ''
+            return `/rwd/zh/fund/T86?response=json&date=${date}&selectType=ALLBUT0999`
+          },
+          headers: { 'Referer': 'https://www.twse.com.tw/' },
+        },
+
         // ── Yahoo Finance（autocomplete 股票搜尋）──────────────────────────
         '/api/search': {
           target: 'https://query1.finance.yahoo.com',
