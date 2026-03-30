@@ -56,11 +56,12 @@ const INTERVAL_DAYS: Record<ChartInterval, number> = {
 }
 
 function getDateRange(interval: ChartInterval): { from: string; to: string } {
-  const today = new Date()
-  const to    = today.toISOString().slice(0, 10)
-  const from  = new Date(today)
-  from.setDate(from.getDate() - INTERVAL_DAYS[interval])
-  return { from: from.toISOString().slice(0, 10), to }
+  // 台灣時區（UTC+8）：交易時間 09:00-13:30 對應 UTC 01:00-05:30，
+  // 若用 toISOString() 在交易時間內 `to` 會是「昨天」，造成抓不到今天的資料
+  const to = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Taipei' }).slice(0, 10)
+  const fromDate = new Date(to + 'T00:00:00')
+  fromDate.setDate(fromDate.getDate() - INTERVAL_DAYS[interval])
+  return { from: fromDate.toISOString().slice(0, 10), to }
 }
 
 // ── Fugle 回應型別 ────────────────────────────────────────────────────────────
@@ -113,10 +114,8 @@ export async function fetchStockData(symbol: string, interval: ChartInterval = '
   const isIntraday = interval.endsWith('m')
   const { from, to } = getDateRange(interval)
 
-  // 日期參數：分鐘線 Fugle 自動傳回近 30 天，不需指定
-  const dateParams = isIntraday
-    ? ''
-    : `&from=${from}&to=${to}`
+  // 日期參數：日線/分鐘線都必須明確帶 to（台灣時區），否則 Fugle 不返回今天資料
+  const dateParams = `&from=${from}&to=${to}`
 
   // ── 1 & 2. KDJ + 歷史 K 線（並行 fetch）──────────────────────────────────────
   const [kdjRes, candlesRes] = await Promise.all([
