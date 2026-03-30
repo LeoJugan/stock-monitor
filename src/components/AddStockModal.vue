@@ -43,7 +43,7 @@ const localResults = computed(() => {
     const bExact = b.toLowerCase().startsWith(ql) ? 0 : 1
     return aExact - bExact || a.localeCompare(b)
   })
-  return results.slice(0, 8) as [string, string][]
+  return results.slice(0, 30) as [string, string][]
 })
 
 // 合併本地 + API（用裸碼去重，API 完整 symbol 優先覆蓋本地裸碼）
@@ -75,7 +75,7 @@ const suggestions = computed<[string, string][]>(() => {
     }
   }
 
-  return merged.slice(0, 10)
+  return merged.slice(0, 30)
 })
 
 // 解析 Yahoo Finance quotes 回應成標準格式
