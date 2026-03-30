@@ -9,6 +9,7 @@
 
 import type { OHLCVBar, StockQuote, KDValue, ChartInterval } from '@/types/stock'
 import { TW_STOCK_NAMES } from '@/data/stockNames'
+import { calculateKD } from '@/utils/kdCalculator'
 
 export { TW_STOCK_NAMES }
 
@@ -114,59 +115,72 @@ export async function fetchStockData(symbol: string, interval: ChartInterval = '
   const isIntraday = interval.endsWith('m')
   const { from, to } = getDateRange(interval)
 
-  // 日期參數：日線/分鐘線都必須明確帶 to（台灣時區），否則 Fugle 不返回今天資料
+  // ── 1 & 2. KDJ + 歷史 K 線 ──────────────────────────────────────────────────
+  // 分鐘線：Fugle /technical/kdj 不支援日期參數，永遠回傳最近完整交易日（非今天）
+  // → 改用 /historical/candles 取 K 棒，自行計算 KDJ（與 Yahoo Finance 路徑相同）
+  // 日線/週線/月線：仍使用 /technical/kdj（支援日期，且含 J 值）
   const dateParams = `&from=${from}&to=${to}`
 
-  // ── 1 & 2. KDJ + 歷史 K 線（並行 fetch）──────────────────────────────────────
-  const [kdjRes, candlesRes] = await Promise.all([
-    fetch(
-      `/fugle/technical/kdj/${fugleId}?timeframe=${timeframe}${dateParams}&rPeriod=9&kPeriod=3&dPeriod=3`,
-      { headers: { Accept: 'application/json' } },
-    ),
-    fetch(
+  let bars: OHLCVBar[]
+  let kd: KDValue[]
+
+  if (isIntraday) {
+    // 分鐘線：只抓 candles，自行計算 KDJ
+    const candlesRes = await fetch(
       `/fugle/historical/candles/${fugleId}?timeframe=${timeframe}${dateParams}&sort=asc`,
       { headers: { Accept: 'application/json' } },
-    ),
-  ])
-
-  if (!kdjRes.ok) {
-    if (kdjRes.status === 401 || kdjRes.status === 403)
-      throw new Error('Fugle API Key 無效，請確認 .env.local 的 FUGLE_API_KEY')
-    throw new Error(`HTTP ${kdjRes.status}：無法取得 ${symbol} 的 KDJ`)
-  }
-  const kdjJson: FugleKDJResponse = await kdjRes.json()
-  const candlesJson: FugleCandlesResponse = candlesRes.ok ? await candlesRes.json() : { symbol, data: [] }
-
-  // 建 candles date → close 對照表
-  const closeMap = new Map<string, number>()
-  for (const c of candlesJson.data ?? []) {
-    const dateKey = isIntraday ? c.date.replace('T', ' ').slice(0, 16) : c.date.slice(0, 10)
-    closeMap.set(dateKey, c.close)
-  }
-
-  // KDJ → KDValue[]（日期格式對齊：分鐘線轉 "YYYY-MM-DD HH:mm"，日線保留 "YYYY-MM-DD"）
-  const kd: KDValue[] = (kdjJson.data ?? []).map(item => {
-    const dateKey = isIntraday ? item.date.replace('T', ' ').slice(0, 16) : item.date.slice(0, 10)
-    return {
-      date:  dateKey,
-      rsv:   0,  // Fugle 不提供 RSV，填 0 佔位
-      k:     item.k,
-      d:     item.d,
-      j:     item.j,
-      close: closeMap.get(dateKey) ?? 0,
+    )
+    if (!candlesRes.ok) {
+      if (candlesRes.status === 401 || candlesRes.status === 403)
+        throw new Error('Fugle API Key 無效，請確認 .env.local 的 FUGLE_API_KEY')
+      throw new Error(`HTTP ${candlesRes.status}：無法取得 ${symbol} 的 K 線`)
     }
-  })
+    const candlesJson: FugleCandlesResponse = await candlesRes.json()
+    bars = (candlesJson.data ?? []).map(c => ({
+      date:   c.date.replace('T', ' ').slice(0, 16),
+      open:   c.open,
+      high:   c.high,
+      low:    c.low,
+      close:  c.close,
+      volume: c.volume ?? 0,
+    }))
+    if (bars.length === 0) throw new Error(`找不到股票：${symbol}`)
+    kd = calculateKD(bars)
+  } else {
+    // 日線/週線/月線：並行抓 KDJ + candles
+    const [kdjRes, candlesRes] = await Promise.all([
+      fetch(
+        `/fugle/technical/kdj/${fugleId}?timeframe=${timeframe}${dateParams}&rPeriod=9&kPeriod=3&dPeriod=3`,
+        { headers: { Accept: 'application/json' } },
+      ),
+      fetch(
+        `/fugle/historical/candles/${fugleId}?timeframe=${timeframe}${dateParams}&sort=asc`,
+        { headers: { Accept: 'application/json' } },
+      ),
+    ])
+    if (!kdjRes.ok) {
+      if (kdjRes.status === 401 || kdjRes.status === 403)
+        throw new Error('Fugle API Key 無效，請確認 .env.local 的 FUGLE_API_KEY')
+      throw new Error(`HTTP ${kdjRes.status}：無法取得 ${symbol} 的 KDJ`)
+    }
+    const kdjJson: FugleKDJResponse     = await kdjRes.json()
+    const candlesJson: FugleCandlesResponse = candlesRes.ok ? await candlesRes.json() : { symbol, data: [] }
 
-  if (kd.length === 0) throw new Error(`找不到股票：${symbol}`)
+    // 建 date → close 對照表
+    const closeMap = new Map<string, number>()
+    for (const c of candlesJson.data ?? [])
+      closeMap.set(c.date.slice(0, 10), c.close)
 
-  const bars: OHLCVBar[] = (candlesJson.data ?? []).map(c => ({
-    date:   isIntraday ? c.date.replace('T', ' ').slice(0, 16) : c.date.slice(0, 10),
-    open:   c.open,
-    high:   c.high,
-    low:    c.low,
-    close:  c.close,
-    volume: c.volume ?? 0,
-  }))
+    bars = (candlesJson.data ?? []).map(c => ({
+      date: c.date.slice(0, 10), open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume ?? 0,
+    }))
+
+    kd = (kdjJson.data ?? []).map(item => {
+      const dateKey = item.date.slice(0, 10)
+      return { date: dateKey, rsv: 0, k: item.k, d: item.d, j: item.j, close: closeMap.get(dateKey) ?? 0 }
+    })
+    if (kd.length === 0) throw new Error(`找不到股票：${symbol}`)
+  }
 
   // ── 3. 即時報價 ──────────────────────────────────────────────────────────────
   let fugleQuote: FugleQuote | null = null
