@@ -4,20 +4,22 @@ import { ref, computed, onMounted } from 'vue'
 interface MajorRow {
   code:    string
   name:    string
-  foreign: number  // 張
+  foreign: number
   trust:   number
   dealer:  number
   total:   number
 }
 
-const rows      = ref<MajorRow[]>([])
-const loading   = ref(false)
-const error     = ref('')
-const date      = ref('')          // YYYYMMDD
-const dataDate  = ref('')          // 回傳的實際日期（TWSE 欄位）
-const filterMin = ref(0)           // 外資最低買超（張）篩選
-const sortKey   = ref<'foreign' | 'trust' | 'dealer' | 'total'>('foreign')
-const showAll   = ref(false)       // false = 僅同步買超，true = 全部
+const rows       = ref<MajorRow[]>([])
+const loading    = ref(false)
+const error      = ref('')
+const date       = ref('')
+const filterMin  = ref(0)
+const sortKey    = ref<'foreign' | 'trust' | 'dealer' | 'total'>('foreign')
+const showAll    = ref(false)
+const tradingDays = ref(1)           // 累積天數
+const dateRange  = ref('')           // 實際涵蓋日期範圍說明
+const fetchedDays = ref(0)           // 實際抓到幾個交易日
 
 function todayTW(): string {
   return new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Taipei' }).slice(0, 10).replace(/-/g, '')
@@ -25,41 +27,91 @@ function todayTW(): string {
 
 function parse(s: string): number {
   const n = parseInt(s.replace(/,/g, '').trim())
-  return isNaN(n) ? 0 : Math.round(n / 1000)  // 股 → 張
+  return isNaN(n) ? 0 : Math.round(n / 1000)
 }
 
-async function fetchData(d?: string) {
-  loading.value = true
-  error.value   = ''
-  rows.value    = []
-  const q = d || date.value || todayTW()
+/** 取前一個日曆日（YYYYMMDD → YYYYMMDD） */
+function prevDay(d: string): string {
+  const dt = new Date(`${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6)}T00:00:00`)
+  dt.setDate(dt.getDate() - 1)
+  return dt.toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' }).replace(/-/g, '')
+}
+
+/** 向 TWSE 抓單日資料，回傳 null 代表假日/無資料 */
+async function fetchOneDay(d: string): Promise<{ date: string; data: string[][] } | null> {
   try {
-    const res  = await fetch(`/api/three-majors?date=${q}`)
+    const res  = await fetch(`/api/three-majors?date=${d}`)
     const json = await res.json()
-
-    if (json.stat !== 'OK' || !json.data?.length) {
-      error.value = `${q.slice(0,4)}/${q.slice(4,6)}/${q.slice(6)} 無資料（假日或尚未公布）`
-      return
-    }
-
-    dataDate.value = json.date ?? q
-
-    rows.value = (json.data as string[][]).map(row => {
-      const foreign = parse(row[4])
-      const trust   = parse(row[10])
-      const dealer  = parse(row[11])
-      return {
-        code:    row[0].trim(),
-        name:    row[1].trim(),
-        foreign, trust, dealer,
-        total:   foreign + trust + dealer,
-      }
-    })
+    if (json.stat !== 'OK' || !json.data?.length) return null
+    return { date: json.date ?? d, data: json.data }
   } catch {
-    error.value = '資料取得失敗，請稍後再試'
-  } finally {
-    loading.value = false
+    return null
   }
+}
+
+/** 往回找 n 個有效交易日，合計買賣超 */
+async function fetchData() {
+  loading.value   = true
+  error.value     = ''
+  rows.value      = []
+  dateRange.value = ''
+  fetchedDays.value = 0
+
+  const endDate = date.value || todayTW()
+  const n = tradingDays.value
+
+  // 累積 map: code → MajorRow
+  const accum = new Map<string, MajorRow>()
+  let found = 0
+  let firstDate = ''
+  let lastDate  = ''
+  let cur = endDate
+  let attempts = 0
+
+  while (found < n && attempts < n + 30) {
+    attempts++
+    const day = await fetchOneDay(cur)
+    if (day) {
+      if (!lastDate) lastDate = day.date
+      firstDate = day.date
+      found++
+
+      for (const row of day.data) {
+        const code    = row[0].trim()
+        const name    = row[1].trim()
+        const foreign = parse(row[4])
+        const trust   = parse(row[10])
+        const dealer  = parse(row[11])
+        const existing = accum.get(code)
+        if (existing) {
+          existing.foreign += foreign
+          existing.trust   += trust
+          existing.dealer  += dealer
+          existing.total   += foreign + trust + dealer
+        } else {
+          accum.set(code, { code, name, foreign, trust, dealer, total: foreign + trust + dealer })
+        }
+      }
+    }
+    cur = prevDay(cur)
+  }
+
+  fetchedDays.value = found
+
+  if (found === 0) {
+    error.value = `${endDate.slice(0,4)}/${endDate.slice(4,6)}/${endDate.slice(6)} 附近無資料（假日或尚未公布）`
+    loading.value = false
+    return
+  }
+
+  if (n > 1) {
+    dateRange.value = `${firstDate} ～ ${lastDate}（${found} 個交易日）`
+  } else {
+    dateRange.value = lastDate
+  }
+
+  rows.value = Array.from(accum.values())
+  loading.value = false
 }
 
 const filtered = computed(() => {
@@ -75,7 +127,7 @@ const filtered = computed(() => {
 
 function setDate(d: string) {
   date.value = d
-  fetchData(d)
+  fetchData()
 }
 
 onMounted(() => {
@@ -91,13 +143,34 @@ onMounted(() => {
     <div class="flex flex-wrap items-center gap-3">
       <div>
         <h2 class="text-lg font-bold text-white flex items-center gap-2">
-          <span class="text-xl">🏦</span> 三大法人同步買超
+          <span class="text-xl">🏦</span> 三大法人買超
         </h2>
-        <p class="text-xs text-slate-500 mt-0.5">外資、投信、自營商同日買超個股（上市，單位：張）</p>
+        <p class="text-xs text-slate-500 mt-0.5">
+          外資、投信、自營商累積買超（上市，單位：張）
+          <span v-if="dateRange" class="text-slate-600 ml-1">｜{{ dateRange }}</span>
+        </p>
       </div>
 
-      <!-- 日期選擇 -->
-      <div class="ml-auto flex items-center gap-2">
+      <!-- 右側：天數 + 日期 + 查詢 -->
+      <div class="ml-auto flex items-center gap-2 flex-wrap justify-end">
+        <!-- 累積天數 -->
+        <div class="flex items-center gap-1.5">
+          <span class="text-xs text-slate-500">累積</span>
+          <select
+            v-model.number="tradingDays"
+            class="bg-slate-800 border border-slate-600 rounded-lg px-2 py-1.5 text-sm text-slate-200
+                   focus:outline-none focus:border-blue-500"
+          >
+            <option :value="1">1 日</option>
+            <option :value="3">3 日</option>
+            <option :value="5">5 日</option>
+            <option :value="10">10 日</option>
+            <option :value="20">20 日</option>
+          </select>
+          <span class="text-xs text-slate-500">工作日</span>
+        </div>
+
+        <!-- 結束日期 -->
         <input
           type="date"
           :value="date ? `${date.slice(0,4)}-${date.slice(4,6)}-${date.slice(6)}` : ''"
@@ -105,15 +178,18 @@ onMounted(() => {
                  focus:outline-none focus:border-blue-500"
           @change="(e) => setDate((e.target as HTMLInputElement).value.replace(/-/g,''))"
         />
+
         <button
-          class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors"
+          class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium
+                 transition-colors flex items-center gap-1.5"
+          :disabled="loading"
           @click="fetchData()"
         >
-          <svg v-if="loading" class="w-4 h-4 animate-spin inline mr-1" fill="none" viewBox="0 0 24 24">
+          <svg v-if="loading" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
           </svg>
-          {{ loading ? '查詢中…' : '查詢' }}
+          {{ loading ? `${fetchedDays}/${tradingDays} 日…` : '查詢' }}
         </button>
       </div>
     </div>
@@ -130,7 +206,9 @@ onMounted(() => {
           <div :class="['absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform',
                         !showAll ? 'left-5' : 'left-0.5']"/>
         </div>
-        <span class="text-sm text-slate-300">僅同步買超</span>
+        <span class="text-sm text-slate-300">
+          {{ tradingDays > 1 ? '三法人累積均買超' : '僅同步買超' }}
+        </span>
       </label>
 
       <div class="w-px h-4 bg-slate-600" />
@@ -170,9 +248,6 @@ onMounted(() => {
 
       <div class="ml-auto text-xs text-slate-500">
         共 <span class="text-slate-300 font-medium">{{ filtered.length }}</span> 檔
-        <template v-if="dataDate">
-          ｜{{ dataDate }}
-        </template>
       </div>
     </div>
 
@@ -197,33 +272,23 @@ onMounted(() => {
             <th class="text-left px-3 py-2.5 font-medium">#</th>
             <th class="text-left px-3 py-2.5 font-medium">代號</th>
             <th class="text-left px-3 py-2.5 font-medium">名稱</th>
-            <th
-              class="text-right px-3 py-2.5 font-medium cursor-pointer hover:text-blue-400 transition-colors"
-              :class="sortKey === 'foreign' ? 'text-blue-400' : ''"
-              @click="sortKey = 'foreign'"
-            >外資 ↕</th>
-            <th
-              class="text-right px-3 py-2.5 font-medium cursor-pointer hover:text-emerald-400 transition-colors"
-              :class="sortKey === 'trust' ? 'text-emerald-400' : ''"
-              @click="sortKey = 'trust'"
-            >投信 ↕</th>
-            <th
-              class="text-right px-3 py-2.5 font-medium cursor-pointer hover:text-yellow-400 transition-colors"
-              :class="sortKey === 'dealer' ? 'text-yellow-400' : ''"
-              @click="sortKey = 'dealer'"
-            >自營 ↕</th>
-            <th
-              class="text-right px-3 py-2.5 font-medium cursor-pointer hover:text-purple-400 transition-colors pr-4"
-              :class="sortKey === 'total' ? 'text-purple-400' : ''"
-              @click="sortKey = 'total'"
-            >合計 ↕</th>
+            <th class="text-right px-3 py-2.5 font-medium cursor-pointer hover:text-blue-400 transition-colors"
+                :class="sortKey === 'foreign' ? 'text-blue-400' : ''"
+                @click="sortKey = 'foreign'">外資 ↕</th>
+            <th class="text-right px-3 py-2.5 font-medium cursor-pointer hover:text-emerald-400 transition-colors"
+                :class="sortKey === 'trust' ? 'text-emerald-400' : ''"
+                @click="sortKey = 'trust'">投信 ↕</th>
+            <th class="text-right px-3 py-2.5 font-medium cursor-pointer hover:text-yellow-400 transition-colors"
+                :class="sortKey === 'dealer' ? 'text-yellow-400' : ''"
+                @click="sortKey = 'dealer'">自營 ↕</th>
+            <th class="text-right px-3 py-2.5 font-medium cursor-pointer hover:text-purple-400 transition-colors pr-4"
+                :class="sortKey === 'total' ? 'text-purple-400' : ''"
+                @click="sortKey = 'total'">合計 ↕</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-700/30">
-          <tr
-            v-for="(r, idx) in filtered" :key="r.code"
-            class="hover:bg-slate-700/30 transition-colors"
-          >
+          <tr v-for="(r, idx) in filtered" :key="r.code"
+              class="hover:bg-slate-700/30 transition-colors">
             <td class="px-3 py-2.5 text-slate-600 text-xs">{{ idx + 1 }}</td>
             <td class="px-3 py-2.5 font-mono text-blue-400 font-medium">{{ r.code }}</td>
             <td class="px-3 py-2.5 text-slate-200">{{ r.name }}</td>
@@ -248,8 +313,7 @@ onMounted(() => {
       </table>
     </div>
 
-    <div v-else-if="!loading && !error"
-         class="text-center text-slate-600 py-12">
+    <div v-else-if="!loading && !error" class="text-center text-slate-600 py-12">
       無符合條件的個股
     </div>
 
