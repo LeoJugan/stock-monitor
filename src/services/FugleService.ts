@@ -65,6 +65,37 @@ function getDateRange(interval: ChartInterval): { from: string; to: string } {
   return { from: fromDate.toISOString().slice(0, 10), to }
 }
 
+// ── 1 分鐘棒聚合 ──────────────────────────────────────────────────────────────
+
+/** 將 1 分鐘 K 棒聚合成 N 分鐘 K 棒（5/15/30/60） */
+function aggregate1mTo(bars: OHLCVBar[], minutes: number): OHLCVBar[] {
+  if (minutes <= 1 || bars.length === 0) return bars
+  const buckets = new Map<string, OHLCVBar[]>()
+
+  for (const bar of bars) {
+    const [datePart, timePart] = bar.date.split(' ')
+    const [hh, mm] = timePart.split(':').map(Number)
+    const totalMin  = hh * 60 + mm
+    const bucketMin = Math.floor(totalMin / minutes) * minutes
+    const bHH = String(Math.floor(bucketMin / 60)).padStart(2, '0')
+    const bMM = String(bucketMin % 60).padStart(2, '0')
+    const key = `${datePart} ${bHH}:${bMM}`
+    if (!buckets.has(key)) buckets.set(key, [])
+    buckets.get(key)!.push(bar)
+  }
+
+  return Array.from(buckets.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, group]) => ({
+      date,
+      open:   group[0].open,
+      high:   Math.max(...group.map(b => b.high)),
+      low:    Math.min(...group.map(b => b.low)),
+      close:  group[group.length - 1].close,
+      volume: group.reduce((s, b) => s + b.volume, 0),
+    }))
+}
+
 // ── Fugle 回應型別 ────────────────────────────────────────────────────────────
 
 interface FugleKDJItem {
@@ -125,25 +156,45 @@ export async function fetchStockData(symbol: string, interval: ChartInterval = '
   let kd: KDValue[]
 
   if (isIntraday) {
-    // 分鐘線：只抓 candles，自行計算 KDJ
-    const candlesRes = await fetch(
-      `/fugle/historical/candles/${fugleId}?timeframe=${timeframe}${dateParams}&sort=asc`,
-      { headers: { Accept: 'application/json' } },
-    )
-    if (!candlesRes.ok) {
-      if (candlesRes.status === 401 || candlesRes.status === 403)
+    const todayTW = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Taipei' }).slice(0, 10)
+    const tfNum   = parseInt(timeframe)  // '5' → 5
+
+    // 1. 歷史 K 棒（已完結的交易日，提供 KD 計算的歷史基礎）
+    // 2. 今日即時 K 棒（/intraday/candles 返回 1 分鐘棒，需聚合）
+    const [histRes, intradayRes] = await Promise.all([
+      fetch(`/fugle/historical/candles/${fugleId}?timeframe=${timeframe}${dateParams}&sort=asc`,
+        { headers: { Accept: 'application/json' } }),
+      fetch(`/fugle/intraday/candles/${fugleId}`,
+        { headers: { Accept: 'application/json' } }),
+    ])
+
+    if (!histRes.ok) {
+      if (histRes.status === 401 || histRes.status === 403)
         throw new Error('Fugle API Key 無效，請確認 .env.local 的 FUGLE_API_KEY')
-      throw new Error(`HTTP ${candlesRes.status}：無法取得 ${symbol} 的 K 線`)
+      throw new Error(`HTTP ${histRes.status}：無法取得 ${symbol} 的 K 線`)
     }
-    const candlesJson: FugleCandlesResponse = await candlesRes.json()
-    bars = (candlesJson.data ?? []).map(c => ({
-      date:   c.date.replace('T', ' ').slice(0, 16),
-      open:   c.open,
-      high:   c.high,
-      low:    c.low,
-      close:  c.close,
-      volume: c.volume ?? 0,
-    }))
+
+    const histJson: FugleCandlesResponse = await histRes.json()
+    const histBars: OHLCVBar[] = (histJson.data ?? [])
+      .filter(c => !c.date.startsWith(todayTW))  // 排除今日，避免與即時重複
+      .map(c => ({
+        date:   c.date.replace('T', ' ').slice(0, 16),
+        open:   c.open, high: c.high, low: c.low, close: c.close, volume: c.volume ?? 0,
+      }))
+
+    // 今日即時：1 分鐘棒聚合到目標 timeframe
+    let todayBars: OHLCVBar[] = []
+    if (intradayRes.ok) {
+      const intradayJson = await intradayRes.json()
+      const raw1m: OHLCVBar[] = (intradayJson.data ?? []).map((c: FugleCandle) => ({
+        date:   c.date.replace('T', ' ').slice(0, 16),
+        open:   c.open, high: c.high, low: c.low, close: c.close, volume: c.volume ?? 0,
+      }))
+      todayBars = aggregate1mTo(raw1m, tfNum)
+    }
+
+    // 合併：歷史 + 今日，計算 KDJ
+    bars = [...histBars, ...todayBars]
     if (bars.length === 0) throw new Error(`找不到股票：${symbol}`)
     kd = calculateKD(bars)
   } else {
