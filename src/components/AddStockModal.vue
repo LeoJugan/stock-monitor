@@ -362,7 +362,7 @@ async function submit() {
             <div
               v-if="showDropdown && suggestions.length > 0"
               class="absolute z-10 left-0 right-0 mt-1 bg-slate-900 border border-slate-700
-                     rounded-xl shadow-2xl overflow-y-auto max-h-60"
+                     rounded-xl shadow-2xl overflow-y-auto max-h-72 pb-1"
             >
               <button
                 v-for="([code, name], i) in suggestions"
