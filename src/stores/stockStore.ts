@@ -23,7 +23,7 @@ export const useStockStore = defineStore('stock', () => {
   const signalSettings = ref<SignalSettings>({ ...DEFAULT_SIGNAL_SETTINGS })
   const lastRefresh    = ref<Date | null>(null)
   const isRefreshing   = ref(false)
-  let   _timer: ReturnType<typeof setInterval> | null = null
+  let   _timer: ReturnType<typeof setTimeout> | null = null
 
   // ── 持久化 ──────────────────────────────────────────────────────────────────
 
@@ -247,15 +247,27 @@ export const useStockStore = defineStore('stock', () => {
   // ── 自動更新 ────────────────────────────────────────────────────────────────
 
   function startAutoRefresh() {
-    if (_timer) clearInterval(_timer)
+    if (_timer) clearTimeout(_timer)
+    _timer = null
+
+    async function tick() {
+      await refreshAll()
+      // 每次 refresh 完成後重新判斷，確保開/收盤切換即時生效
+      const ms = isTaiwanTradingTime()
+        ? signalSettings.value.refreshTradingMs
+        : signalSettings.value.refreshClosedMs
+      _timer = setTimeout(tick, ms)
+    }
+
+    // 先用目前判斷的間隔排第一次
     const ms = isTaiwanTradingTime()
       ? signalSettings.value.refreshTradingMs
       : signalSettings.value.refreshClosedMs
-    _timer = setInterval(() => refreshAll(), ms)
+    _timer = setTimeout(tick, ms)
   }
 
   function stopAutoRefresh() {
-    if (_timer) { clearInterval(_timer); _timer = null }
+    if (_timer) { clearTimeout(_timer); _timer = null }
   }
 
   // ── 初始化 ──────────────────────────────────────────────────────────────────
