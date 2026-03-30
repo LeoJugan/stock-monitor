@@ -225,11 +225,20 @@ async function submit() {
   // API 還在查詢中（中文搜尋補查交易所）→ 等待完成再提交
   await waitForSearch()
 
+  // 先記住使用者自訂的名稱，避免被 select() 覆蓋
+  const userCustomName = nameInput.value.trim()
+
   // 自動套用第一筆建議（此時 suggestions 已含正確的 .TWO）
   if (suggestions.value.length > 0) {
     const [code, name] = suggestions.value[0]
     select(code, name)
   }
+
+  // 若使用者有填自訂名稱，優先使用（不被 select() 沖掉）
+  if (userCustomName) {
+    nameInput.value = userCustomName
+  }
+
   error.value = ''
   emit('add', symbolInput.value.trim(), nameInput.value.trim())
 }
@@ -353,7 +362,7 @@ async function submit() {
             <div
               v-if="showDropdown && suggestions.length > 0"
               class="absolute z-10 left-0 right-0 mt-1 bg-slate-900 border border-slate-700
-                     rounded-xl shadow-2xl overflow-hidden"
+                     rounded-xl shadow-2xl overflow-y-auto max-h-60"
             >
               <button
                 v-for="([code, name], i) in suggestions"
