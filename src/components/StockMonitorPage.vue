@@ -7,11 +7,12 @@ import StockCard from './StockCard.vue'
 import AddStockModal from './AddStockModal.vue'
 import SignalSettingsModal from './SignalSettingsModal.vue'
 import ThreeMajors from './ThreeMajors.vue'
+import DividendQuery from './DividendQuery.vue'
 
 const store = useStockStore()
 const showModal    = ref(false)
 const showSettings = ref(false)
-const activeTab    = ref<'watchlist' | 'three-majors'>('watchlist')
+const activeTab    = ref<'watchlist' | 'three-majors' | 'dividend'>('watchlist')
 const addError   = ref('')
 const twTime     = ref(getTaiwanTimeStr())
 const isTrading  = ref(isTaiwanTradingTime())
@@ -210,6 +211,13 @@ function onDragEnd() {
                      : 'border-transparent text-slate-500 hover:text-slate-300']"
           @click="activeTab = 'three-majors'"
         >🏦 三大法人</button>
+        <button
+          :class="['px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px',
+                   activeTab === 'dividend'
+                     ? 'border-blue-500 text-blue-400'
+                     : 'border-transparent text-slate-500 hover:text-slate-300']"
+          @click="activeTab = 'dividend'"
+        >💰 除息查詢</button>
       </div>
     </header>
 
@@ -218,6 +226,9 @@ function onDragEnd() {
 
       <!-- 三大法人 Tab -->
       <ThreeMajors v-if="activeTab === 'three-majors'" />
+
+      <!-- 除息查詢 Tab -->
+      <DividendQuery v-else-if="activeTab === 'dividend'" />
 
       <!-- 盯盤 Tab -->
       <div v-else class="max-w-6xl mx-auto px-4">
