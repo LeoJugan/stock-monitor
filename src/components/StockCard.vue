@@ -6,6 +6,7 @@ import { PERIOD_OPTIONS } from '@/services/dataService'
 import { useStockStore } from '@/stores/stockStore'
 import KDChart from './KDChart.vue'
 import StockZoomModal from './StockZoomModal.vue'
+import StockMajorsModal from './StockMajorsModal.vue'
 
 const props = defineProps<{
   item: WatchlistItem
@@ -32,8 +33,9 @@ function togglePocket() {
   }
 }
 
-const expanded = ref(false)
-const zoomed   = ref(false)
+const expanded     = ref(false)
+const zoomed       = ref(false)
+const showMajors   = ref(false)
 
 const shortCode = computed(() =>
   props.item.symbol.replace(/\.TW[O]?$/, '').replace(/^\^/, '')
@@ -208,6 +210,19 @@ function formatVolume(v: number): string {
         </button>
         <div v-else class="w-7" />
 
+        <!-- 三大法人 -->
+        <button
+          title="三大法人買超"
+          class="p-1.5 rounded-lg text-slate-600 hover:text-blue-400 transition-colors"
+          @click.stop="showMajors = true"
+        >
+          <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+            <rect x="2"  y="14" width="4" height="8" rx="1"/>
+            <rect x="10" y="8"  width="4" height="14" rx="1"/>
+            <rect x="18" y="3"  width="4" height="19" rx="1"/>
+          </svg>
+        </button>
+
         <!-- 通知 -->
         <button
           :title="item.notifyOnSignal ? '關閉此股通知' : '開啟此股通知'"
@@ -247,6 +262,23 @@ function formatVolume(v: number): string {
           :settings="settings"
           @close="zoomed = false"
           @changeInterval="(sym, iv) => emit('changeInterval', sym, iv)"
+        />
+      </Transition>
+    </Teleport>
+
+    <!-- ── 三大法人 Modal ── -->
+    <Teleport to="body">
+      <Transition
+        enter-active-class="transition-opacity duration-200"
+        enter-from-class="opacity-0"
+        leave-active-class="transition-opacity duration-150"
+        leave-to-class="opacity-0"
+      >
+        <StockMajorsModal
+          v-if="showMajors"
+          :symbol="shortCode"
+          :name="displayName"
+          @close="showMajors = false"
         />
       </Transition>
     </Teleport>

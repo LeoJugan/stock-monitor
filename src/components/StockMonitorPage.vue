@@ -182,17 +182,29 @@ function onDragEnd() {
         </button>
 
         <!-- 新增按鈕（只在盯盤頁顯示） -->
-        <button
-          v-if="activeTab === 'watchlist'"
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500
-                 text-white text-xs font-semibold transition-colors shadow-lg shadow-blue-500/20"
-          @click="showModal = true; addError = ''"
-        >
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4" />
-          </svg>
-          新增股票
-        </button>
+        <template v-if="activeTab === 'watchlist'">
+          <span v-if="store.watchlist.length >= store.maxWatchlist * 0.8"
+                class="text-[11px]"
+                :class="store.watchlist.length >= store.maxWatchlist ? 'text-red-400' : 'text-yellow-500'">
+            {{ store.watchlist.length }}/{{ store.maxWatchlist }}
+          </span>
+          <button
+            :class="[
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors shadow-lg',
+              store.watchlist.length >= store.maxWatchlist
+                ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/20'
+            ]"
+            :disabled="store.watchlist.length >= store.maxWatchlist"
+            :title="store.watchlist.length >= store.maxWatchlist ? `已達上限 ${store.maxWatchlist} 支` : '新增股票'"
+            @click="store.watchlist.length < store.maxWatchlist && (showModal = true, addError = '')"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4" />
+            </svg>
+            新增股票
+          </button>
+        </template>
       </div>
 
       <!-- Tab 列 -->

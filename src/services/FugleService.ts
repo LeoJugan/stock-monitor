@@ -191,6 +191,8 @@ export async function fetchStockData(symbol: string, interval: ChartInterval = '
         open:   c.open, high: c.high, low: c.low, close: c.close, volume: c.volume ?? 0,
       }))
       todayBars = aggregate1mTo(raw1m, tfNum)
+    } else if (intradayRes.status === 429) {
+      throw new Error('Fugle API 請求過於頻繁（429），請稍後再試')
     }
 
     // 合併：歷史 + 今日，計算 KDJ
@@ -237,17 +239,36 @@ export async function fetchStockData(symbol: string, interval: ChartInterval = '
   let fugleQuote: FugleQuote | null = null
   try {
     const qr = await fetch(`/fugle/intraday/quote/${fugleId}`, { headers: { Accept: 'application/json' } })
-    if (qr.ok) fugleQuote = await qr.json()
-  } catch { /* 非交易時段靜默忽略 */ }
+    if (qr.ok) {
+      fugleQuote = await qr.json()
+    } else if (qr.status === 429) {
+      throw new Error('Fugle API 請求過於頻繁（429），請稍後再試')
+    }
+    // 其他非 2xx（例如非交易時段 404）：靜默忽略，使用 K 棒收盤作備用
+  } catch (e) {
+    if (e instanceof Error && e.message.includes('429')) throw e
+  }
 
   // ── 4. 組合 quote ────────────────────────────────────────────────────────────
-  const lastBar = bars[bars.length - 1]
-  const price   = fugleQuote?.lastPrice ?? fugleQuote?.closePrice ?? lastBar?.close ?? 0
+  const lastBar  = bars[bars.length - 1]
+  const todayTWd = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Taipei' }).slice(0, 10)
+  const prevDay  = new Date(todayTWd + 'T00:00:00+08:00')
+  prevDay.setDate(prevDay.getDate() - 1)
+  const prevDayStr = prevDay.toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' })
+
+  // lastPrice = 0 時仍未成交，視為無效；只取 > 0 的值
+  const livePrice  = fugleQuote?.lastPrice  && fugleQuote.lastPrice  > 0 ? fugleQuote.lastPrice  : null
+  // closePrice = 上一交易日收盤，可作備用
+  const closePxFb  = fugleQuote?.closePrice && fugleQuote.closePrice > 0 ? fugleQuote.closePrice : null
+  // lastBar.close 只在今日或前一日的棒才可信（防止歷史舊資料污染當前報價）
+  const barRecent  = lastBar?.date?.startsWith(todayTWd) || lastBar?.date?.startsWith(prevDayStr)
+  const barCloseFb = barRecent ? (lastBar?.close ?? null) : null
+
+  const price = livePrice ?? barCloseFb ?? closePxFb ?? lastBar?.close ?? 0
 
   let prevClose = price
   if (isIntraday && bars.length > 0) {
-    const todayDate = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Taipei' }).slice(0, 10)
-    const prevBars  = bars.filter(b => !b.date.startsWith(todayDate))
+    const prevBars = bars.filter(b => !b.date.startsWith(todayTWd))
     prevClose = prevBars.length > 0 ? prevBars[prevBars.length - 1].close : (bars[0]?.open ?? price)
   } else if (bars.length >= 2) {
     prevClose = bars[bars.length - 2].close
@@ -261,12 +282,11 @@ export async function fetchStockData(symbol: string, interval: ChartInterval = '
   let todayLow  = fugleQuote?.lowPrice  ?? lastBar?.low   ?? price
 
   if (isIntraday && bars.length > 0) {
-    const todayDate = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Taipei' }).slice(0, 10)
-    const todayBars = bars.filter(b => b.date.startsWith(todayDate))
-    if (todayBars.length > 0) {
-      todayOpen = todayBars[0].open
-      todayHigh = Math.max(...todayBars.map(b => b.high))
-      todayLow  = Math.min(...todayBars.map(b => b.low))
+    const todayBarsF = bars.filter(b => b.date.startsWith(todayTWd))
+    if (todayBarsF.length > 0) {
+      todayOpen = todayBarsF[0].open
+      todayHigh = Math.max(...todayBarsF.map(b => b.high))
+      todayLow  = Math.min(...todayBarsF.map(b => b.low))
     }
   }
 

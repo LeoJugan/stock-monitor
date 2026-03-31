@@ -256,9 +256,28 @@ async function submit() {
 
       <!-- Header -->
       <div class="flex items-center justify-between px-5 pt-5 pb-4 border-b border-slate-700/50">
-        <h2 class="text-base font-bold text-white flex items-center gap-2">
-          <span class="text-xl">＋</span> 新增股票
-        </h2>
+        <div>
+          <h2 class="text-base font-bold text-white flex items-center gap-2">
+            <span class="text-xl">＋</span> 新增股票
+          </h2>
+          <div class="flex items-center gap-2 mt-1">
+            <div class="h-1.5 w-24 bg-slate-700 rounded-full overflow-hidden">
+              <div
+                class="h-full rounded-full transition-all"
+                :class="store.watchlist.length >= store.maxWatchlist
+                  ? 'bg-red-500'
+                  : store.watchlist.length >= store.maxWatchlist * 0.8
+                    ? 'bg-yellow-500'
+                    : 'bg-blue-500'"
+                :style="{ width: `${Math.min(100, (store.watchlist.length / store.maxWatchlist) * 100)}%` }"
+              />
+            </div>
+            <span class="text-[11px]"
+                  :class="store.watchlist.length >= store.maxWatchlist ? 'text-red-400' : 'text-slate-500'">
+              {{ store.watchlist.length }} / {{ store.maxWatchlist }} 支
+            </span>
+          </div>
+        </div>
         <button class="text-slate-500 hover:text-slate-300 transition-colors p-1 rounded-lg hover:bg-slate-700"
                 @click="emit('close')">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

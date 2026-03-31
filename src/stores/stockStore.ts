@@ -55,10 +55,19 @@ export const useStockStore = defineStore('stock', () => {
 
   // ── 清單管理 ────────────────────────────────────────────────────────────────
 
+  // 動態上限：60 req/min ÷ (每分鐘刷新次數) ÷ 3 calls/stock
+  // = refreshTradingMs / 3000，最少 5 支
+  const maxWatchlist = computed(() =>
+    Math.max(5, Math.floor(signalSettings.value.refreshTradingMs / 3000))
+  )
+
   async function addStock(rawSymbol: string, customName?: string) {
     const symbol = normalizeSymbol(rawSymbol)
     if (watchlist.value.some(w => w.symbol === symbol)) {
       throw new Error(`${symbol} 已在清單中`)
+    }
+    if (watchlist.value.length >= maxWatchlist.value) {
+      throw new Error(`目前刷新間隔（${signalSettings.value.refreshTradingMs / 1000}s）下，上限為 ${maxWatchlist.value} 支`)
     }
 
     // 先驗證資料可以抓到，找不到就不加入
@@ -209,7 +218,10 @@ export const useStockStore = defineStore('stock', () => {
     if (isRefreshing.value || watchlist.value.length === 0) return
     isRefreshing.value = true
     try {
-      await Promise.allSettled(watchlist.value.map(w => refreshOne(w.symbol)))
+      // 循序更新，避免並行打爆 Fugle free-tier rate limit（429）
+      for (const w of watchlist.value) {
+        await refreshOne(w.symbol)
+      }
       lastRefresh.value = new Date()
     } finally {
       isRefreshing.value = false
@@ -293,6 +305,7 @@ export const useStockStore = defineStore('stock', () => {
     dataMap,
     notifyEnabled,
     signalSettings,
+    maxWatchlist,
     updateSignalSettings,
     lastRefresh,
     isRefreshing,
