@@ -396,7 +396,8 @@ onMounted(fetchData)
               <!-- 合計成本卡 -->
               <div class="rounded-xl border border-blue-500/20 bg-blue-500/5 p-3">
                 <div class="text-xs text-slate-500 mb-2 text-center font-medium">三法人合計</div>
-                <div class="flex items-center justify-around">
+                <!-- 有持倉：正常顯示均成本 -->
+                <div v-if="combinedCost.qty > 0" class="flex items-center justify-around">
                   <div class="text-center">
                     <div class="text-[10px] text-slate-600">持有</div>
                     <div class="text-sm font-mono font-bold text-slate-300">
@@ -420,22 +421,38 @@ onMounted(fetchData)
                     </div>
                   </template>
                 </div>
+                <!-- 無持倉：顯示區間淨部位 -->
+                <div v-else class="flex items-center justify-around">
+                  <div class="text-center">
+                    <div class="text-[10px] text-slate-500 mb-1">區間淨部位</div>
+                    <div :class="['text-sm font-mono font-bold', numClass(total.total)]">
+                      {{ fmt(total.total) }} 張
+                    </div>
+                  </div>
+                  <div class="w-px h-8 bg-slate-700" />
+                  <div class="text-center">
+                    <div class="text-[10px] text-slate-500 mb-1">均成本</div>
+                    <div class="text-xs text-slate-600">無法估算</div>
+                  </div>
+                </div>
               </div>
 
               <!-- 各法人明細 -->
               <div class="grid grid-cols-3 gap-2">
                 <div v-for="inst in [
-                  { label: '外資', cost: foreignCost, color: 'blue' },
-                  { label: '投信', cost: trustCost,   color: 'emerald' },
-                  { label: '自營', cost: dealerCost,  color: 'yellow' },
+                  { label: '外資', cost: foreignCost, color: 'blue',    net: total.foreign },
+                  { label: '投信', cost: trustCost,   color: 'emerald', net: total.trust },
+                  { label: '自營', cost: dealerCost,  color: 'yellow',  net: total.dealer },
                 ]" :key="inst.label"
                   class="bg-slate-900/50 rounded-xl p-2.5 border border-slate-700/30 text-center">
                   <div class="text-[10px] text-slate-600 mb-1.5">{{ inst.label }}</div>
                   <div class="text-[11px] font-mono font-bold text-white leading-none">
                     {{ inst.cost.avgPrice > 0 ? inst.cost.avgPrice.toFixed(2) : '--' }}
                   </div>
-                  <div class="text-[10px] text-slate-600 mt-1">
-                    {{ inst.cost.qty > 0 ? inst.cost.qty.toLocaleString() + '張' : '無持倉' }}
+                  <div class="text-[10px] mt-1" :class="inst.cost.qty > 0 ? 'text-slate-600' : numClass(inst.net)">
+                    {{ inst.cost.qty > 0
+                        ? inst.cost.qty.toLocaleString() + '張'
+                        : inst.net !== 0 ? fmt(inst.net) + '張' : '持平' }}
                   </div>
                   <!-- 未實現損益 -->
                   <div v-if="currentPrice && inst.cost.avgPrice > 0"
