@@ -24,7 +24,7 @@ interface AvgCost {
   avgPrice: number  // 加權平均成本（元）
 }
 
-const days     = ref(5)
+const days     = ref(1)
 const rows     = ref<DayRow[]>([])
 const loading  = ref(false)
 const error    = ref('')
