@@ -278,6 +278,7 @@ function formatVolume(v: number): string {
           v-if="showMajors"
           :symbol="shortCode"
           :name="displayName"
+          :current-price="data?.quote.price"
           @close="showMajors = false"
         />
       </Transition>
