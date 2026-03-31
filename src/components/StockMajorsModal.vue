@@ -54,32 +54,31 @@ function fmtDate(d: string): string {
   return `${d.slice(4,6)}/${d.slice(6)}`
 }
 
-function toISO(d: string): string {
-  return `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6)}`
-}
-
-// ── 抓 Fugle 歷史收盤價 ───────────────────────────────────────────────────────
+// ── 抓 TWSE 個股日線收盤價（免費，無需 API Key）─────────────────────────────
+// TWSE STOCK_DAY 一次回傳整個月，dates 可能跨月，需分月查詢（最多 2 個月）
 async function fetchClosePrices(dates: string[]): Promise<Map<string, number>> {
   const priceMap = new Map<string, number>()
   if (!dates.length) return priceMap
 
-  const sorted = [...dates].sort()
-  const from   = toISO(sorted[0])
-  const to     = toISO(sorted[sorted.length - 1])
+  // 取出涵蓋的不重複年月（YYYYMM）
+  const months = [...new Set(dates.map(d => d.slice(0, 6)))]
 
-  try {
-    const res = await fetch(
-      `/fugle/historical/candles/${props.symbol}?timeframe=D&from=${from}&to=${to}&sort=asc`,
-      { headers: { Accept: 'application/json' } }
-    )
-    if (!res.ok) return priceMap
-    const json = await res.json()
-    const candles: { date: string; close: number }[] = json.data ?? []
-    for (const c of candles) {
-      // date 格式：'2025-03-28' → '20250328'
-      priceMap.set(c.date.slice(0, 10).replace(/-/g, ''), c.close)
-    }
-  } catch { /* 靜默忽略 */ }
+  await Promise.all(months.map(async (ym) => {
+    try {
+      const res  = await fetch(`/api/stock-day?date=${ym}01&stockNo=${props.symbol}`)
+      const json = await res.json()
+      if (json.stat !== 'OK' || !json.data?.length) return
+
+      for (const row of json.data) {
+        // row[0] = "113/12/02"（民國年），row[6] = 收盤價字串
+        const parts = (row[0] as string).split('/')
+        const year  = parseInt(parts[0]) + 1911
+        const dateKey = `${year}${parts[1]}${parts[2]}`   // YYYYMMDD
+        const close   = parseFloat((row[6] as string).replace(/,/g, ''))
+        if (!isNaN(close)) priceMap.set(dateKey, close)
+      }
+    } catch { /* 靜默忽略單月錯誤 */ }
+  }))
 
   return priceMap
 }

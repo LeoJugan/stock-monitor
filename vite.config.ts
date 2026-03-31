@@ -25,6 +25,21 @@ export default defineConfig(({ mode }) => {
           headers: { 'X-API-KEY': fugleKey },
         },
 
+        // ── 台灣證交所個股日線（收盤價，用於平均成本估算）────────────────
+        '/api/stock-day': {
+          target: 'https://www.twse.com.tw',
+          changeOrigin: true,
+          secure: true,
+          rewrite: (p) => {
+            const q = p.split('?')[1] ?? ''
+            const params = new URLSearchParams(q)
+            const date    = params.get('date')    || ''
+            const stockNo = params.get('stockNo') || ''
+            return `/exchangeReport/STOCK_DAY?response=json&date=${date}&stockNo=${stockNo}`
+          },
+          headers: { 'Referer': 'https://www.twse.com.tw/' },
+        },
+
         // ── 台灣證交所三大法人 ───────────────────────────────────────────
         '/api/three-majors': {
           target: 'https://www.twse.com.tw',
